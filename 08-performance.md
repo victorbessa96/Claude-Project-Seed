@@ -288,3 +288,4 @@ Set explicit timeouts at every layer:
 - [06-security](06-security.md) — Rate limiting as security measure
 - [07-error-handling](07-error-handling.md) — Timeout handling and retries
 - [03-architecture](03-architecture.md) — Async patterns and background jobs
+- [modules/observability](modules/observability.md) — Metrics collection patterns, performance dashboards, cost of instrumentation

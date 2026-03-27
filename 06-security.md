@@ -330,3 +330,5 @@ Protect against denial-of-service attacks.
 - [03-architecture](03-architecture.md) — API design and endpoint security
 - [07-error-handling](07-error-handling.md) — Secure error messages (don't leak internals)
 - [10-quality-ops](10-quality-ops.md) — Security in CI/CD pipelines
+- [modules/authentication](modules/authentication.md) — Full auth system design: sessions, tokens, OAuth, roles, multi-tenancy
+- [modules/file-media](modules/file-media.md) — Secure file upload validation and handling

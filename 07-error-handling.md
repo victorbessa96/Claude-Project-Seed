@@ -287,3 +287,4 @@ Good error messages are part of the user experience, not an afterthought.
 - [04-data-modeling](04-data-modeling.md) — Audit trails for error logging
 - [06-security](06-security.md) — Don't leak internals in error messages
 - [08-performance](08-performance.md) — Timeout configuration
+- [modules/observability](modules/observability.md) — Deep dive on error telemetry, alerting strategy, structured logging

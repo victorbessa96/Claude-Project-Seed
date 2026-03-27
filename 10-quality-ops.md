@@ -284,3 +284,4 @@ The specific style matters less than consistent application. Pick conventions an
 - [06-security](06-security.md) — Security in CI/CD pipelines
 - [09-testing](09-testing.md) — Running tests in CI/CD
 - [11-ai-collaboration](11-ai-collaboration.md) — Documentation for AI-assisted development
+- [modules/observability](modules/observability.md) — Deep dive on logging, metrics, tracing, alerting, and dashboards

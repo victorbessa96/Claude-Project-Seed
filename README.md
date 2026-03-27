@@ -14,7 +14,7 @@ This seed is designed for a developer working with an AI coding assistant (e.g.,
 4. **Hardening:** Read [06-security](06-security.md), [07-error-handling](07-error-handling.md), and [08-performance](08-performance.md)
 5. **Quality gates:** Read [09-testing](09-testing.md) and [10-quality-ops](10-quality-ops.md)
 6. **Working with AI:** Read [11-ai-collaboration](11-ai-collaboration.md) for structuring projects for effective AI-assisted development
-7. **Domain-specific needs:** Check the [modules/](modules/) folder for optional patterns (LLM integration, agents, data ingestion)
+7. **Domain-specific needs:** Check the [modules/](modules/) folder for optional patterns (LLM integration, agents, data ingestion, auth, real-time, file handling)
 
 ## File Map
 
@@ -41,6 +41,10 @@ This seed is designed for a developer working with an AI coding assistant (e.g.,
 | [modules/ai-llm-integration](modules/ai-llm-integration.md) | LLM client abstraction, prompt management, cost control, caching, token budgeting, streaming, concurrency |
 | [modules/agents-orchestration](modules/agents-orchestration.md) | Agent loops, orchestrators, human-in-the-loop, debugging, communication, cost modeling |
 | [modules/data-ingestion](modules/data-ingestion.md) | Source abstraction, scheduling, webhooks, file imports, delta fetching, dedup, normalization |
+| [modules/authentication](modules/authentication.md) | Auth architecture, sessions, tokens, OAuth, password lifecycle, roles, multi-tenancy |
+| [modules/real-time](modules/real-time.md) | WebSocket, SSE, polling, pub/sub, presence, offline-first, conflict resolution |
+| [modules/file-media](modules/file-media.md) | Uploads, storage abstraction, image optimization, serving, exports, file lifecycle |
+| [modules/observability](modules/observability.md) | Three pillars (logs, metrics, traces), structured logging, health checks, alerting, SLOs, dashboards, diagnostics |
 
 ## Conventions
 

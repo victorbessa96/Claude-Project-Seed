@@ -285,3 +285,5 @@ frontend/
 - [06-security](06-security.md) — Securing API endpoints and data access
 - [07-error-handling](07-error-handling.md) — Error patterns for each architectural layer
 - [08-performance](08-performance.md) — Performance considerations per layer
+- [modules/real-time](modules/real-time.md) — WebSocket, SSE, and pub/sub patterns for real-time communication
+- [modules/authentication](modules/authentication.md) — Auth middleware design and integration with layered architecture

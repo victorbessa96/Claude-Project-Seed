@@ -182,6 +182,35 @@ Not all technical debt is bad. Some debt is a deliberate investment — shipping
 
 ---
 
+## When You've Outgrown This Seed
+
+This seed is designed for small teams (1-3 people), single-service applications, and early-stage projects. It will carry you through a first release, several iterations, and a healthy maintenance period. But some projects grow past the assumptions baked into these documents. Recognizing that inflection point is itself a skill.
+
+**Signs you're outgrowing the seed:**
+- Your team has more than 3-5 active contributors and coordination overhead is becoming the bottleneck
+- The application spans multiple services or repositories, and single-process assumptions no longer hold
+- You need formal compliance, audit trails, or regulatory sign-off that go beyond the security tiers here
+- You have a dedicated operations or platform team, and the "developer does everything" model no longer applies
+- Release coordination requires more process than "commit, test, deploy"
+
+**What changes at that scale:**
+- **Architecture** moves from single-service conventions to service boundaries, API contracts, and distributed system patterns. The layered architecture principles still apply within each service, but cross-service communication introduces new failure modes.
+- **Security** needs formal threat modeling beyond the three-tier checklist. Compliance requirements drive decisions that override simplicity.
+- **Lifecycle** phases overlap more as different teams work on different parts simultaneously. Formal sprint processes, architecture decision records (ADRs), and design review become necessary coordination tools.
+- **Observability** shifts from "structured logs and a health endpoint" to dedicated infrastructure: centralized log aggregation, metric pipelines, distributed tracing across services.
+- **Testing** needs dedicated CI/CD infrastructure, environment parity management, and test data strategies that go beyond transaction rollback.
+
+**What stays the same:**
+The principles in this document — simplicity, incremental delivery, fail gracefully, measure twice, own your dependencies — apply at every scale. A 50-person team still benefits from writing the minimum code needed, shipping incrementally, and understanding problems before solving them. The specific patterns evolve, but the reasoning behind them doesn't.
+
+**How to graduate:**
+- Don't abandon the seed overnight. Identify which specific assumptions no longer hold and address those first.
+- Replace seed conventions with team-owned conventions: architecture decision records, team style guides, runbooks.
+- The seed's "why" explanations remain useful even when the "in practice" guidance no longer fits. Keep the reasoning; evolve the implementation.
+- If a section still works for your project, keep using it. Graduation is partial and gradual, not a clean break.
+
+---
+
 ## Related Documents
 
 - [02-lifecycle](02-lifecycle.md) — How these principles map to project phases
