@@ -164,6 +164,58 @@ For long-generation tasks, stream the LLM response to the user instead of waitin
 
 **When to use:** When generation takes > 5 seconds and the user is watching. For background/batch processing, streaming is unnecessary.
 
+**Implementation considerations:**
+- **Backend:** Open a streaming connection to the LLM API. Forward each chunk as an SSE event to the frontend. Close the SSE connection when the LLM stream completes or errors.
+- **Frontend:** Use `EventSource` or `fetch` with a `ReadableStream` to consume SSE events. Append each chunk to the UI. Handle connection drops gracefully (reconnect or show error).
+- **Error handling:** The LLM stream may error mid-generation. Distinguish between "partial response received" (may be usable) and "no response at all." Surface partial responses when they're meaningful.
+- **Cancellation:** The user should be able to cancel mid-stream. On cancel: close the SSE connection, send a cancel signal to the backend, and the backend should abort the LLM request and clean up.
+
+---
+
+### Response Caching
+
+Identical LLM requests produce similar (not identical) responses, but for some use cases, caching can save significant cost.
+
+**When to cache:**
+- Classification/tagging — the same input should produce the same category. Cache aggressively (hours to days).
+- Embedding generation — identical text produces identical embeddings. Cache indefinitely.
+- Reference lookups — "What category does this belong to?" for a known input.
+
+**When NOT to cache:**
+- Creative generation — users expect variety. Caching defeats the purpose.
+- Prompts with dynamic context — if the system prompt changes frequently, cached responses are stale.
+
+**Cache key design:**
+- Hash the combination of: model, system prompt, user prompt, and relevant parameters (temperature, max tokens)
+- Normalize inputs before hashing (trim whitespace, consistent formatting) to avoid near-miss cache misses
+- Set TTL based on how quickly the correct answer might change
+
+---
+
+### Token Counting and Budget Management
+
+LLM costs are proportional to token usage. Track and control it.
+
+**Why:** A pipeline that processes 1,000 articles through classification, summarization, and generation can cost $10 or $100 depending on model choice and prompt length. Without visibility, costs are invisible until the invoice arrives.
+
+**In practice:**
+- **Estimate before calling** — most providers share their tokenizer. Estimate input tokens before making the call. If the input exceeds a budget, truncate or skip.
+- **Track actual usage** — log the `usage` field from API responses (input tokens, output tokens, total tokens). Store per call and per task.
+- **Set budgets** — per-run budget (don't spend more than $X on this generation batch), daily budget, monthly budget. Stop processing when budget is exhausted.
+- **Show cost to users** — display estimated cost alongside generation actions ("Generate output ~$0.15"). This makes cost a visible part of the decision.
+
+---
+
+### Concurrent LLM Calls
+
+When processing multiple independent items (classifying 50 articles), concurrent calls can dramatically reduce total time.
+
+**In practice:**
+- **Limit concurrency** — don't open 50 simultaneous connections. Use a semaphore or concurrency pool (3-5 concurrent calls is typical for most providers).
+- **Respect rate limits** — even with concurrency, honor the provider's requests-per-minute limit. A rate limiter should sit between your code and the API.
+- **Handle partial failures** — if 3 of 50 calls fail, the other 47 should still succeed. Use per-item error handling (→ see [07-error-handling](../07-error-handling.md)).
+- **Aggregate results** — collect results as they complete, not in submission order. Present a summary to the user: "Classified 47/50 articles. 3 failed."
+
 ---
 
 ## Pipeline Patterns

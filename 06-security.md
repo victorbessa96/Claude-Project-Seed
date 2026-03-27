@@ -213,17 +213,59 @@ Verify who the user is (authentication) and what they're allowed to do (authoriz
 - Implement account lockout or rate limiting on login endpoints
 - Store passwords with bcrypt/argon2, never plain text or MD5/SHA
 
-### HTTPS
+### HTTPS / TLS
 
 All traffic must be encrypted in transit.
 
 **Why:** HTTP traffic can be intercepted, modified, and replayed by anyone between the client and server. HTTPS prevents eavesdropping, tampering, and impersonation.
 
 **In practice:**
-- Use TLS certificates (Let's Encrypt for free)
-- Redirect HTTP to HTTPS
-- Set HSTS headers to prevent downgrade attacks
-- Don't mix HTTP and HTTPS content
+- Use TLS certificates (Let's Encrypt for free automated certificates)
+- Redirect HTTP to HTTPS at the server level
+- Set HSTS headers to prevent downgrade attacks (`Strict-Transport-Security: max-age=31536000; includeSubDomains`)
+- Don't mix HTTP and HTTPS content (mixed content breaks security guarantees)
+
+**Common misconfiguration gotchas:**
+- Expired certificates — automate renewal; monitor expiration dates
+- Incomplete certificate chains — test with multiple clients, not just your browser (some browsers fetch missing intermediate certs; others don't)
+- Serving HTTPS but allowing HTTP fallback without redirect — users on HTTP get no protection
+- Using outdated TLS versions — disable TLS 1.0 and 1.1; require TLS 1.2+
+
+### Session Management
+
+For applications using sessions (cookies, tokens), secure the session mechanism itself.
+
+**Why:** A stolen session is equivalent to a stolen password — the attacker has full access as the user, without needing credentials.
+
+**In practice:**
+- **Cookie flags:** Set `HttpOnly` (prevents JavaScript access), `Secure` (HTTPS only), and `SameSite=Lax` or `Strict` (prevents cross-site attachment)
+- **Session expiration:** Set reasonable session lifetimes (hours for active sessions, not days or weeks). Require re-authentication for sensitive actions even within a valid session.
+- **Session invalidation:** Provide logout that destroys the server-side session, not just the cookie. Invalidate all sessions on password change.
+- **Token rotation:** For long-lived tokens, rotate them periodically. A compromised token limits damage to the rotation window.
+
+### Password Storage
+
+Never store passwords in a recoverable format.
+
+**Why:** Database breaches happen. When they do, the question is whether attackers get usable passwords or useless hashes. Proper hashing makes stolen data worthless.
+
+**Properties of a good password hash:**
+- **Slow by design** — computational cost should be tunable (work factor / iterations) so that hashing a single password takes 100-500ms. This is imperceptible to users but makes brute-force attacks impractical.
+- **Salted** — each password gets a unique random salt, so identical passwords produce different hashes
+- **Memory-hard** (ideal) — requires significant memory per hash, making GPU-based cracking expensive
+- Never use general-purpose hash functions (MD5, SHA-256) for passwords — they're designed to be fast, which is the opposite of what you want
+
+### Request Body Limits
+
+Set maximum sizes for request bodies and individual fields.
+
+**Why:** Without limits, a single request can exhaust server memory. An attacker (or a buggy client) sending a 10GB POST body shouldn't be able to crash your application.
+
+**In practice:**
+- Set a global request body size limit at the web server or framework level (e.g., 10MB for most apps, larger if handling file uploads)
+- Validate `Content-Type` headers — reject unexpected content types before parsing
+- For file uploads, enforce size limits per file and per request
+- For JSON APIs, reject payloads that exceed a reasonable size for the endpoint's purpose
 
 ### CSRF Protection
 

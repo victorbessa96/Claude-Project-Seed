@@ -56,6 +56,31 @@ Key points:
 - Close connections on application shutdown
 - For async applications, use async-compatible drivers (don't block the event loop with sync DB calls)
 
+### Database Maintenance
+
+Databases accumulate overhead that degrades performance over time. Periodic maintenance keeps them healthy.
+
+- **VACUUM** — Reclaims space from deleted rows. Without it, the database file grows but never shrinks. Run periodically (weekly for active databases) or after large bulk deletes.
+- **ANALYZE** — Updates query planner statistics so the database can choose optimal query plans. Run after significant data changes (bulk imports, schema changes).
+- **Index rebuild** — Indexes can become fragmented with heavy insert/delete patterns. Rebuilding restores optimal structure.
+- **WAL checkpointing** — In WAL mode, the write-ahead log grows until checkpointed. Most databases auto-checkpoint, but verify this is happening. Large WAL files indicate stalled checkpoints.
+
+**In practice:**
+- Schedule maintenance during low-traffic periods (same window as backups)
+- Monitor database file size over time — if it grows much faster than data volume, maintenance is overdue
+- For SQLite: `PRAGMA optimize` on connection close handles most statistics updates automatically
+
+### Write Optimization
+
+When inserting or updating large amounts of data, naive approaches can be orders of magnitude slower.
+
+- **Batch inserts** — Insert multiple rows per statement instead of one at a time. A single INSERT with 100 rows is dramatically faster than 100 individual INSERTs.
+- **Transaction grouping** — Wrap batch operations in a single transaction. Without explicit transactions, each statement auto-commits, which forces a disk sync per row.
+- **Prepared statements** — Reuse compiled statements for repeated operations. The database parses and plans the query once, then executes it many times.
+- **Defer index updates** — For very large bulk loads, consider disabling non-essential indexes, loading data, then rebuilding indexes. This avoids updating indexes on every insert.
+
+> **CyberPulse example:** Article ingestion wraps all inserts in a single transaction per source. INSERT OR IGNORE with a content hash handles deduplication within the same transaction.
+
 ---
 
 ## Pagination
@@ -121,6 +146,12 @@ The two hardest problems in CS: cache invalidation, naming things, and off-by-on
 - Log cache hit/miss rates to verify the cache is actually helping
 - When in doubt, use short TTLs — stale data is worse than slow data
 
+**TTL guidance by data type:**
+- **Volatile data** (real-time status, live metrics): 5-15 seconds, or don't cache at all
+- **Semi-stable data** (settings, category lists, model lists): 1-5 minutes
+- **Stable reference data** (timezone lists, country codes, static config): 1-24 hours
+- **Expensive computations** (aggregations, reports): 5-30 minutes, with event-based invalidation on underlying data changes
+
 ---
 
 ## Rate Limiting
@@ -172,6 +203,28 @@ Async is valuable when the application spends most of its time waiting for I/O (
 - **Non-blocking database** — Use async database drivers; never call sync DB methods in async handlers
 - **Background tasks** — Offload long work to background jobs rather than blocking request handlers
 - **Streaming responses** — Use async generators for SSE/streaming without holding threads
+
+---
+
+## Memory Management
+
+### Detecting Memory Issues
+
+Memory leaks are silent performance killers — the application works fine initially and degrades over hours or days.
+
+**Common causes of memory leaks:**
+- **Unclosed resources** — database connections, file handles, HTTP clients that aren't cleaned up
+- **Growing caches without eviction** — in-memory caches that add entries but never remove them
+- **Event listener accumulation** — registering listeners without deregistering on cleanup (especially in SPAs)
+- **Circular references** — objects that reference each other and prevent garbage collection (language-dependent)
+- **Large objects held in closures** — a callback that captures a reference to a large dataset keeps that dataset alive
+
+**In practice:**
+- Monitor process memory usage over time — a steady upward trend indicates a leak
+- For long-running processes (servers, schedulers), log memory usage periodically
+- Set memory limits on processes so leaks cause a restart rather than exhausting system memory
+- When investigating: use language-specific profiling tools to take heap snapshots and compare them over time
+- For in-memory caches, always set a maximum size and an eviction policy (LRU or TTL-based)
 
 ---
 

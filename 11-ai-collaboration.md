@@ -142,6 +142,33 @@ AI assistants tend to overdeliver. They'll refactor surrounding code, add error 
 
 **Why:** Broad "review my code" prompts produce broad, generic feedback. Focused questions produce actionable findings.
 
+### Reviewing AI-Generated Code
+
+AI output looks correct more often than it is correct. Review it with healthy skepticism.
+
+**What to check:**
+- **Does it do what was asked?** — AI tends to add unrequested features, refactor surrounding code, or "improve" things that were fine. Check scope first.
+- **Does it handle the unhappy path?** — AI is excellent at happy paths but can be optimistic about error handling. Verify that errors from external calls, missing data, and invalid states are handled.
+- **Does it introduce new dependencies?** — AI may import libraries that aren't in the project or use APIs that don't exist in your version.
+- **Does it match project conventions?** — AI follows the patterns in CLAUDE.md and existing code, but only if those patterns are clear. Check naming, file organization, and error handling patterns.
+- **Are the magic values reasonable?** — AI often uses plausible-looking but arbitrary numbers (timeouts, limits, thresholds). Verify these match your requirements.
+
+### Hallucination Prevention
+
+AI assistants can confidently reference APIs, functions, or patterns that don't exist.
+
+**Common hallucination patterns:**
+- Calling methods that don't exist on the libraries you're using
+- Referencing configuration options that aren't real
+- Using syntax from one language/version in another
+- Citing documentation that doesn't exist or says something different
+
+**Mitigation:**
+- For unfamiliar APIs: ask the AI to show you where in the documentation the feature is described, then verify
+- For code changes: run the code. A function that doesn't exist will fail immediately.
+- For configuration: check the actual documentation or source code of the library
+- If the AI is confidently wrong about something, point it out directly — it will correct course
+
 ---
 
 ## Prompt Patterns for Development
@@ -176,6 +203,47 @@ Constraint: [behavior must not change]
 ```
 
 **Why:** Structured prompts eliminate ambiguity. The AI doesn't have to guess what you mean, so it produces more accurate results on the first try.
+
+---
+
+## Iterative Refinement
+
+AI rarely produces perfect output on the first attempt. The skill is in giving feedback that converges quickly.
+
+### Effective Feedback Patterns
+
+- **Be specific about what's wrong:** "The error handling catches too broadly — it should catch `TimeoutError` specifically, not all `Exception`s" is better than "fix the error handling"
+- **Show, don't tell:** If the AI's approach is wrong, show an example of what you want: "Use this pattern instead: `if not result: return default`"
+- **One thing at a time:** Correcting 5 problems in one message leads to some being addressed and others ignored. Fix the most important issue first.
+- **Affirm what's right:** If 80% of the output is correct, say so. "The data model is correct. The API routes are correct. But the error handling needs to change:" — this prevents the AI from rethinking the entire solution.
+
+### When to Start Over
+
+Sometimes iterative refinement converges slowly or not at all. Start a new approach when:
+- The AI is going in circles (fixing one thing, breaking another)
+- The conversation has accumulated so much context that responses are degrading
+- The fundamental approach is wrong, not just the details
+
+---
+
+## Context Management for Large Codebases
+
+In large projects, the AI can't read everything at once. Effective scoping determines the quality of output.
+
+### Scoping Work for AI
+
+- **Point to specific files:** "Modify `routers/articles.py` and `services/articles.py`" is better than "fix the articles feature"
+- **Provide the relevant context:** If the change depends on a utility function in another file, mention it: "The `format_date()` helper in `utils.py` already handles timezone conversion — use it."
+- **Break large tasks into steps:** Instead of "implement the export feature," do "Step 1: Add the export endpoint in `routers/export.py`. Step 2: Add the PDF renderer in `services/export_pdf.py`."
+- **Use plan mode for complex tasks:** Let the AI explore the codebase and propose a plan before it starts writing code
+
+### Keeping CLAUDE.md Useful at Scale
+
+As the project grows, CLAUDE.md must grow with it — but not unboundedly.
+
+- **Layer your documentation:** CLAUDE.md for project-wide conventions; subdirectory-level docs for subsystem-specific patterns (e.g., `frontend/CLAUDE.md` for frontend conventions)
+- **Keep it current:** Review CLAUDE.md during each major feature addition. Remove patterns that no longer apply. Add new conventions as they emerge.
+- **Prioritize the non-obvious:** Don't document what the code makes clear. Document the "why" behind surprising choices and the constraints that aren't visible from the code.
 
 ---
 

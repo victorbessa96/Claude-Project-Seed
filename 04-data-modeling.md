@@ -51,6 +51,75 @@ Each index slows down writes and consumes storage. Only index columns that are a
 
 ---
 
+## Relationships and Referential Integrity
+
+### Foreign Keys and Constraints
+
+Every relationship between tables should be enforced by the database, not just by application code.
+
+**Why:** Application-level relationship enforcement is one bug away from orphaned records. Database-level foreign keys guarantee integrity even when application code has errors, when scripts run directly against the database, or when a crash interrupts a multi-step operation.
+
+**In practice:**
+- Define FOREIGN KEY constraints for every relationship
+- Enable foreign key enforcement explicitly if your database requires it (e.g., `PRAGMA foreign_keys = ON` for SQLite)
+- Choose CASCADE behavior deliberately for each relationship:
+
+| ON DELETE behavior | Use when | Example |
+|-------------------|----------|---------|
+| **CASCADE** | Child records are meaningless without the parent | Deleting an article deletes its associated fetch log entries |
+| **SET NULL** | Child records can exist independently but lose context | Deleting a category sets articles' category to NULL |
+| **RESTRICT** | Deletion should be prevented if children exist | Can't delete a source while articles reference it |
+
+- Default to RESTRICT — it's the safest option. Cascading deletes are convenient but can accidentally remove more data than intended.
+
+### Orphan Prevention
+
+Even with foreign keys, orphans can appear in systems with soft-delete, async processing, or external references.
+
+**In practice:**
+- After bulk operations, run periodic integrity checks that scan for orphaned records
+- When soft-deleting a parent, decide what happens to children — soft-delete them too, or leave them pointing at a soft-deleted parent?
+- For async pipelines where records are created in stages, handle the case where a later stage fails: the partial record should be cleaned up or marked as incomplete
+
+> **CyberPulse example:** Articles reference their source. Foreign keys with RESTRICT prevent deleting a source that still has articles. Fetch log entries CASCADE on article deletion since they're meaningless without the parent record.
+
+---
+
+## Concurrency Control
+
+When multiple processes or users can modify the same data, you need a strategy to prevent conflicts.
+
+### Optimistic Locking
+
+Assume conflicts are rare. Read the record with a version number, make changes, then update only if the version hasn't changed.
+
+**Why:** Optimistic locking adds no overhead when conflicts don't happen (the common case). It's ideal for web applications where users edit records independently and simultaneous edits to the same record are infrequent.
+
+**In practice:**
+- Add a `version` (integer) or `updated_at` (timestamp) column to records that can be concurrently edited
+- On update, include `WHERE version = :expected_version` — if no rows are updated, another process changed the record
+- Return a conflict error to the caller so they can re-read and retry
+
+### Pessimistic Locking
+
+Assume conflicts are likely. Lock the record before reading, preventing others from modifying it until the lock is released.
+
+**Why:** Pessimistic locking guarantees no conflicts but reduces throughput. Use it for operations where a conflict would be expensive (financial transactions, inventory decrements) or where retrying is impractical.
+
+**In practice:**
+- Use database-level locks (SELECT FOR UPDATE) within a transaction
+- Keep lock duration as short as possible — never hold a lock while waiting for user input or external API calls
+- Always release locks in a finally/cleanup block to prevent deadlocks
+
+### When to Choose Which
+
+- **Read-heavy, low contention** — Optimistic locking (or no locking at all)
+- **Write-heavy, high contention on same records** — Pessimistic locking
+- **Single-user application** — No locking needed; the user is the only writer
+- **Background jobs that don't compete** — Use idempotent operations instead of locks
+
+---
+
 ## Migration Strategy
 
 ### Schema Versioning
@@ -75,6 +144,15 @@ Design migrations to move forward. Rollback migrations sound good in theory but 
 - Make migrations idempotent where possible (IF NOT EXISTS, INSERT OR IGNORE)
 - Never modify a migration that has already been applied — write a new one
 
+### Fixing a Bad Migration
+
+If a migration is wrong but hasn't been deployed to production yet, you have options:
+- **Delete and rewrite** — If only you have run it (local development), reset your local database, fix the migration, and re-apply
+- **Write a corrective migration** — If others have applied it (shared dev environment), write a new migration that fixes the problem. Never edit the original.
+- **Backup and rebuild** — If the migration corrupted data, restore from backup, fix the migration, and re-apply
+
+The key principle: migrations in shared environments are immutable. The only way to "undo" an applied migration is to write a new one that moves the schema forward to the correct state.
+
 ---
 
 ## Data Lifecycle
@@ -89,7 +167,18 @@ Data should not grow unbounded. Define how long each type of data lives and what
 - Add an `expires_at` column to time-bounded data
 - Run a daily pruning job that deletes expired rows
 - Make retention configurable (store the policy in settings, not hardcoded)
-- Consider soft-delete (mark as deleted) before hard-delete for data that might be needed
+- Consider soft-delete (mark as deleted) before hard-delete for data that might be needed — but understand the implications (see below)
+
+### Soft-Delete Implications
+
+Soft-delete (adding a `deleted_at` timestamp instead of removing rows) preserves data recoverability but introduces ongoing costs:
+
+- **Every query must filter** — `WHERE deleted_at IS NULL` must appear on every read query, or users see deleted records. Missing this filter once creates a confusing bug.
+- **Unique constraints break** — If `email` is unique and a user is soft-deleted, no new user can use that email. Workaround: include `deleted_at` in the unique constraint, or use a partial unique index.
+- **Reporting complexity** — Aggregations (counts, sums) must explicitly exclude soft-deleted rows. If they don't, reports silently include stale data.
+- **Data accumulation** — Soft-deleted records are still in the database. Without periodic hard-delete of old soft-deleted records, the table grows indefinitely.
+
+**When soft-delete is worth the cost:** Records that are expensive to recreate, have legal retention requirements, or where accidental deletion by users is a realistic risk. **When it isn't:** Records that can be re-fetched from an external source, ephemeral data, or single-user tools where accidental deletion is the user's own problem.
 
 > **CyberPulse example:** Articles have a configurable `article_retention_days` setting (default 14). A daily scheduler job at 03:00 UTC deletes articles where `expires_at < now`. The setting is stored in the database and changeable from the UI.
 

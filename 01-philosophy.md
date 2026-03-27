@@ -145,6 +145,43 @@ Every dependency is a trade-off: functionality gained vs. control lost. Pin vers
 
 ---
 
+## When Principles Conflict
+
+These principles are defaults, not commandments — and sometimes they pull in opposite directions. When that happens, don't pick a winner blindly. Understand the tension, then make a deliberate call based on your project's current phase and constraints.
+
+**Common tensions and resolution heuristics:**
+
+**Simplicity vs. Reversibility** — Soft-delete adds complexity (filtered queries, broken unique constraints), but hard-delete is irreversible. *Resolution:* Default to simplicity. Use soft-delete only for data where accidental loss is genuinely costly and recovery is a real scenario — not as a universal habit. For everything else, rely on backups as your reversibility mechanism.
+
+**Performance vs. Security** — Caching speeds things up but can serve stale auth data. Rate limiting protects the system but adds latency and complexity. *Resolution:* Security wins by default. Performance optimizations must not weaken security guarantees. Optimize within security constraints, not around them.
+
+**Ship Then Polish vs. Accessibility** — Philosophy says ship early and polish later, but accessibility is hard to bolt on after the fact. *Resolution:* Core accessibility — semantic HTML, keyboard navigation, color contrast — is part of "working software," not "polish." It ships with the first pass. Enhancements like screen-reader optimization and ARIA live regions can come in the polish phase.
+
+**Measure Twice vs. Incremental Delivery** — How much planning is enough before each increment? *Resolution:* Scale planning to risk. A trivial feature gets a mental model; a data model change or external API integration gets a written plan. If the cost of getting it wrong is an easy revert, plan lightly. If the cost is a database migration, plan thoroughly.
+
+**Local-First vs. External Services** — Some capabilities (auth providers, payment processing, real-time collaboration) may be genuinely impractical to build locally. *Resolution:* Local-first is a default, not a constraint. When an external service is clearly the right tool, use it — but still abstract it behind a client layer so switching is cheap.
+
+> **CyberPulse example:** Soft-delete was considered for articles but rejected — articles can always be re-fetched from their sources, so the complexity wasn't justified. Hard-delete with a retention window (configurable days) keeps the system simpler while still providing a recovery buffer.
+
+---
+
+## Technical Debt as a Tool
+
+Not all technical debt is bad. Some debt is a deliberate investment — shipping faster now with a known shortcut, intending to pay it down before it compounds.
+
+**Why:** Treating all shortcuts as failures leads to over-engineering early and shipping late. Treating all shortcuts as acceptable leads to a codebase that gradually becomes unmaintainable. The goal is intentional debt — taken deliberately, tracked visibly, and paid down before it blocks progress.
+
+**In practice:**
+- Before taking a shortcut, decide: is this "move fast" debt (acceptable) or "don't understand the problem" debt (dangerous)?
+- Mark deliberate shortcuts with a comment explaining what the proper solution is and when it should be done
+- Track debt at the project level, not just in code comments — a list of known shortcuts prevents them from being forgotten
+- Pay down debt when you're working in the area anyway — it's cheapest when context is fresh
+- If a shortcut has survived three feature additions without causing problems, it may not be debt at all — it may be the right solution
+
+> **CyberPulse example:** Early versions used a single `process_articles()` function that handled fetching, classifying, and storing. This was deliberate — it validated the pipeline end-to-end. Once the pipeline was proven, it was decomposed into separate stages. The shortcut saved days of upfront design that would have targeted the wrong abstractions.
+
+---
+
 ## Related Documents
 
 - [02-lifecycle](02-lifecycle.md) — How these principles map to project phases

@@ -151,16 +151,71 @@ Commit → Lint → Test → Build → Deploy
 
 ### Environment Separation
 
-| Environment | Purpose | Data |
-|------------|---------|------|
-| **Development** | Local coding and debugging | Synthetic/test data |
-| **Staging** | Pre-production validation | Copy of production data (anonymized) |
-| **Production** | Live users | Real data |
+| Environment | Purpose | Data | Access |
+|------------|---------|------|--------|
+| **Development** | Local coding and debugging | Synthetic/test data | Developers only |
+| **Staging** | Pre-production validation | Copy of production data (anonymized) | Team + CI/CD |
+| **Production** | Live users | Real data | Restricted; deploy through pipeline only |
 
 **In practice:**
 - Never test against production data during development
-- Staging should mirror production as closely as possible (same versions, same config)
+- Staging should mirror production as closely as possible (same versions, same config, same infrastructure)
 - Deploy to staging automatically on merge; deploy to production manually or with approval
+- Use separate credentials for each environment — never share database passwords, API keys, or service accounts across environments
+- Configuration differences between environments should be explicit and minimal — if staging behaves differently from production, the staging validation is less trustworthy
+
+**Environment parity matters:** The most common "works in staging, breaks in production" failures come from: different database versions, different OS/runtime versions, different network topology, or different data volumes. Close the gaps proactively.
+
+### Secrets in CI/CD
+
+CI/CD pipelines need access to credentials (API keys, deploy tokens, database passwords) but should never expose them.
+
+**In practice:**
+- Store secrets in your CI platform's secret management (not in the repo, not in environment files checked into version control)
+- Never echo or print secrets in build logs — mask them in pipeline output
+- Use short-lived credentials when possible (tokens that expire after the build)
+- Rotate CI/CD secrets on the same schedule as production secrets
+- Limit secret access to the pipeline stages that need them — the lint stage doesn't need the deploy key
+
+### Rollback and Deployment Strategies
+
+When a deployment goes wrong, you need a way back.
+
+**Strategies:**
+- **Rollback to previous version** — Keep the previous deployment artifact available. If the new version fails, redeploy the old one. This is the simplest strategy and sufficient for most applications.
+- **Blue-green deployment** — Run two identical environments. Route traffic to the new version; if it fails, switch back to the old one. Requires infrastructure to support two environments.
+- **Canary deployment** — Route a small percentage of traffic to the new version. Monitor for errors. Gradually increase traffic if healthy. Requires traffic routing capability.
+- **Feature flags** — Deploy new code but hide it behind a flag. Enable for specific users or percentages. Roll back by disabling the flag without redeploying.
+
+**Which to use:**
+- **Personal/small apps** — Manual rollback (redeploy previous version) is sufficient
+- **Team apps with downtime tolerance** — Blue-green gives instant rollback
+- **Apps that can't afford downtime** — Canary limits blast radius
+- **Apps with complex features** — Feature flags allow incremental rollout independent of deployment
+
+### Incident Response
+
+When something breaks in production, a clear response process prevents panic and reduces resolution time.
+
+**Detection:**
+- Health checks and monitoring (→ see Monitoring section above) catch most failures automatically
+- User reports catch what monitoring misses — have a clear channel for users to report issues
+- Log anomalies (error spikes, unusual patterns) can be early indicators
+
+**Triage:**
+- **Severity 1 (outage)** — The application is down or data is being corrupted. All other work stops. Fix or rollback immediately.
+- **Severity 2 (degraded)** — The application works but a significant feature is broken. Fix within hours.
+- **Severity 3 (minor)** — A non-critical feature has a bug. Fix in normal workflow.
+
+**During the incident:**
+- Communicate status to affected users (even "we're aware and investigating" is better than silence)
+- Log what you're doing and what you're finding — this becomes the post-mortem timeline
+- Prefer rollback over hotfix if the rollback is safe — a known-good state is better than a rushed fix
+
+**After the incident (post-mortem):**
+- Write a brief post-mortem: what happened, what was the impact, what was the root cause, what will prevent recurrence
+- Focus on systemic fixes, not blame — "we need better monitoring" not "someone pushed bad code"
+- Track action items from post-mortems to completion
 
 ### When to Skip CI/CD
 

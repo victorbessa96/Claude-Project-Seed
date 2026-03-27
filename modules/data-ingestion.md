@@ -1,6 +1,6 @@
 # Module: Data Ingestion
 
-Patterns for collecting, processing, and normalizing data from external sources — RSS feeds, REST APIs, web scraping, webhooks, and file imports.
+Patterns for collecting, processing, and normalizing data from external sources — RSS feeds, REST APIs, web scraping, webhooks, and file imports. Covers both pull-based ingestion (fetching on a schedule) and push-based ingestion (receiving webhooks, file uploads).
 
 **Prerequisite knowledge:** [03-architecture](../03-architecture.md) (pipeline patterns, background jobs), [04-data-modeling](../04-data-modeling.md) (deduplication, data lifecycle), [07-error-handling](../07-error-handling.md) (graceful degradation, error collection).
 
@@ -224,6 +224,120 @@ Every fetch run should produce a log entry with:
 - Use fetch logs for monitoring: alert if fetch fails N times consecutively
 
 > **CyberPulse example:** `fetch_log` table records every ingestion run with sources attempted, article counts (new/duplicate), errors, duration, and status. Displayed in the Sources view.
+
+---
+
+## Webhook Handling
+
+When external systems push data to you, instead of you pulling from them.
+
+### Receiving Webhooks
+
+**In practice:**
+- **Dedicated endpoint** — expose a route specifically for each webhook source (`/api/webhooks/github`, `/api/webhooks/stripe`)
+- **Signature validation** — verify the request came from the expected sender. Most webhook providers sign payloads with a shared secret (HMAC-SHA256). Reject unsigned or mis-signed requests.
+- **Respond quickly** — return 200/202 immediately, then process asynchronously. Webhook senders have short timeouts and will retry on non-2xx responses.
+- **Idempotency** — webhook providers retry on failure, so you may receive the same event multiple times. Use the event ID (most providers include one) to deduplicate.
+
+### Webhook Deduplication
+
+- Store processed event IDs in a table (event_id, received_at, processed)
+- Before processing, check if the event ID already exists
+- Use INSERT OR IGNORE pattern to handle concurrent deliveries of the same event
+
+### Webhook Reliability
+
+- **Log every received webhook** — even if processing fails, you have the raw event for manual recovery
+- **Queue for processing** — don't process in the HTTP handler. Enqueue the event and process it asynchronously. This prevents webhook timeouts from causing retries.
+- **Handle source outages** — if the webhook source stops sending, you won't know. Supplement webhooks with periodic polling for critical data.
+
+---
+
+## File Import Patterns
+
+For ingesting data from uploaded files (CSV, JSON, XML) or from local directories.
+
+### File Validation
+
+Before processing file contents, validate the file itself:
+- **File type** — verify the extension and content type match expectations
+- **File size** — reject files above a reasonable limit before parsing
+- **Encoding** — detect and normalize character encoding (UTF-8 preferred)
+- **Structure** — verify the file parses correctly (valid CSV, valid JSON) before processing individual records
+
+### Processing Strategy
+
+- **Stream large files** — don't load the entire file into memory. Process line-by-line for CSV, use a streaming parser for JSON/XML.
+- **Validate each record** — apply the same validation as any other source (required fields, type checking, normalization)
+- **Report per-record errors** — "Row 47: missing 'url' field" is actionable. "Import failed" is not.
+- **Support resume** — for very large imports, track progress so a failed import can resume from where it stopped
+
+### Import Feedback
+
+- Show progress: "Processing row 1,247 of 5,000"
+- Show summary on completion: "Imported 4,823 items. 12 duplicates. 165 invalid (see error report)."
+- Make the error report downloadable or viewable — users need to know which records failed and why
+
+> **CyberPulse example:** While CyberPulse focuses on API/RSS ingestion, file import follows the same normalization pipeline — uploaded CSV or JSON files are parsed, normalized to the common article schema, and deduplicated before storage.
+
+---
+
+## Incremental Fetching
+
+### Delta Fetching
+
+Instead of re-fetching all data on each run, fetch only what's changed since the last successful fetch.
+
+**Mechanisms:**
+- **Last-Modified / If-Modified-Since** — HTTP headers that let the server skip unchanged content. Store the `Last-Modified` value from each response; send it back as `If-Modified-Since` on the next request.
+- **ETag / If-None-Match** — content-based change detection. The server provides an ETag; if it hasn't changed, you get a 304 (Not Modified) instead of the full response.
+- **Timestamps in API queries** — many APIs support `?updated_after=2024-01-15T00:00:00Z`. Store the last fetch timestamp and use it on the next request.
+- **Pagination cursors** — some APIs provide a cursor that marks "where you left off."
+
+**When to use:** APIs with large datasets where most data is unchanged between fetches. Not useful for RSS feeds (which are inherently "latest items" and small).
+
+**In practice:**
+- Store the last fetch marker (timestamp, ETag, cursor) per source in your settings or a dedicated tracking table
+- Fall back to a full fetch if the marker is missing or the server doesn't support incremental requests
+- After a full fetch, update the marker for future incremental fetches
+
+---
+
+## Backpressure and Batching
+
+### Handling Large Source Responses
+
+Some sources return thousands of items in a single response. Processing them all at once can overwhelm downstream systems.
+
+**Patterns:**
+- **Batch processing** — process items in groups of N (e.g., 50-100). Insert each batch in a transaction. This limits memory usage and provides natural commit points.
+- **Backpressure signals** — if the database or downstream pipeline can't keep up, slow down the ingestion rate rather than buffering unboundedly in memory.
+- **Progress checkpointing** — after each batch, log how far you've gotten. If the process crashes, resume from the last checkpoint instead of restarting.
+
+**In practice:**
+- Set a maximum items-per-fetch limit where the API supports it
+- For APIs without limits, implement client-side batching (process N items, pause, process next N)
+- Monitor memory usage during ingestion — if it's growing linearly with item count, you're accumulating in memory instead of streaming
+
+---
+
+## Enrichment Ordering
+
+### When to Enrich: Before or After Deduplication?
+
+**Deduplicate first, then enrich** (recommended):
+- Avoids enriching items that will be discarded as duplicates
+- Saves HTTP requests and processing time
+- Trades off: duplicate detection must work with potentially incomplete data (short descriptions, missing full content)
+
+**Enrich first, then deduplicate:**
+- Full content available for more accurate deduplication (can hash on body text, not just URL + title)
+- Trades off: you may enrich items that turn out to be duplicates (wasted work)
+
+**In practice:**
+- Default to deduplicate-first — it's cheaper, and URL + title hashing catches most duplicates
+- If you find false negatives (different URLs pointing to the same content), consider enriching before dedup for a content-based hash
+- Make enrichment optional and configurable per source — some sources provide full content, making enrichment unnecessary
 
 ---
 

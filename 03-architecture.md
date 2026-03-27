@@ -43,6 +43,28 @@ External Services      ← API clients, file I/O, message queues
 
 ---
 
+## Cross-Layer Concerns
+
+Some concerns — authentication, logging, metrics, error handling — span all layers. Handled poorly, they tangle the architecture. Handled well, they're invisible plumbing.
+
+**Why:** If every route handler implements its own auth check, or every service method builds its own log line, you get inconsistency and duplication. Cross-layer concerns need to be wired in once, then applied uniformly.
+
+**Patterns:**
+
+- **Middleware/interceptors** — Auth checks, request logging, rate limiting, and error formatting run as middleware that wraps all route handlers. Business logic never sees HTTP auth headers directly.
+- **Context propagation** — A request ID generated at the entry point flows through all layers and appears in every log line. This makes tracing a single request through logs trivial.
+- **Centralized error formatting** — Each layer throws or returns errors in its own terms (data layer: "record not found"; business logic: "article does not exist"). A single error handler at the route layer translates these into HTTP responses.
+- **Metrics collection** — Instrument at layer boundaries (request received, DB query started/finished, external call made) rather than inside business logic. This keeps metrics code out of domain code.
+
+**In practice:**
+- Wire middleware in one place (the app entry point), not scattered across routes
+- Logging calls in business logic should only capture domain events ("article classified as malware"), not infrastructure events ("HTTP 200 returned") — let middleware handle the latter
+- If a concern appears in more than 3 modules, it belongs in middleware or a shared utility
+
+> **CyberPulse example:** Request logging, CORS, and error formatting are middleware wired in `main.py`. The LLM client logs its own API calls (domain concern), but HTTP-level logging is handled by middleware.
+
+---
+
 ## Configuration Management
 
 There are three common approaches to storing settings. Choose based on your deployment model.
@@ -92,6 +114,27 @@ For projects that expose an API (REST, GraphQL, RPC, or internal module boundari
 **Why:** Consistent API design reduces integration friction. Clients (frontend, scripts, other services) can predict how to interact with new endpoints based on patterns they've already learned.
 
 > **CyberPulse example:** Articles endpoint supports `source`, `category`, `relevance` filters, `sort_by`/`sort_dir` with a whitelist of allowed columns, and `limit`/`offset` pagination with total count.
+
+### API Versioning
+
+When your API has external consumers, changes that break the existing contract need a strategy.
+
+**Approaches:**
+- **URL prefix** (`/api/v1/articles`) — Simple, explicit, easy to route. Best for most projects.
+- **Header-based** (`Accept: application/vnd.myapp.v2+json`) — Cleaner URLs but harder to test and discover.
+- **No versioning** — Acceptable when the only consumer is your own frontend, shipped together.
+
+**When to version:**
+- Adding new fields to a response: no version needed (additive, non-breaking)
+- Removing or renaming a field: version bump (breaking for consumers)
+- Changing the shape of a response: version bump
+- Changing validation rules: version bump if it rejects previously valid input
+
+**In practice:**
+- Start without versioning if you control all consumers
+- When you introduce versioning, keep the old version working for a documented deprecation period
+- Don't maintain more than two active versions — the maintenance burden compounds quickly
+- Log which version each consumer is using, so you know when it's safe to retire the old one
 
 ---
 
@@ -143,6 +186,10 @@ Ingest → Validate → Transform → Store → Serve
 - **Small-scale apps** — if you'll never have more than a few concurrent users, async adds complexity for no gain
 
 **Why:** Async code is harder to read, debug, and reason about. Use it where it provides measurable benefit (I/O concurrency), not as a default.
+
+**The debugging cost of async:** Async introduces challenges that don't exist in synchronous code. Stack traces are often fragmented or missing context. Exceptions can be swallowed silently if a task isn't awaited. Race conditions appear where sequential code had none. Before adopting async, consider whether the concurrency benefit outweighs these costs for your project's scale.
+
+**Structured concurrency:** When using async, prefer patterns that tie concurrent operations to a defined scope — all tasks started in a group are awaited or cancelled when the group exits. This prevents "fire and forget" patterns that lead to orphaned tasks, leaked resources, and errors that nobody handles. The principle: if you start it, you own it until it finishes.
 
 ---
 

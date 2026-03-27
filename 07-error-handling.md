@@ -99,6 +99,57 @@ For persistent failures — stop trying when a service is clearly down.
 
 **When to use:** When the application integrates with multiple external services and can function (degraded) without some of them.
 
+**Configuration guidance:**
+- **Failure threshold:** 3-5 consecutive failures before opening (lower for critical services, higher for flaky ones)
+- **Cooldown period:** 30-60 seconds for APIs, 5-10 minutes for services with long recovery times
+- **Half-open limit:** Allow 1 request through to test recovery — don't flood a recovering service
+- **Metrics to track:** Circuit state changes (open/close), failure rate per service, time spent in open state
+
+### Idempotency and Retry Safety
+
+Not all operations are safe to retry. Before retrying, consider whether the operation is idempotent.
+
+**Idempotent (safe to retry):**
+- GET requests, read queries
+- PUT requests that set a value (setting article status to "published" twice is fine)
+- DELETE requests (deleting an already-deleted record is a no-op)
+- Operations with a unique constraint (INSERT OR IGNORE)
+
+**Non-idempotent (dangerous to retry):**
+- POST requests that create resources (retry may create duplicates)
+- Operations that increment counters or append to lists
+- Operations that send notifications (email, Slack, webhooks)
+- Financial operations (charging a card, transferring money)
+
+**In practice:**
+- For idempotent operations: retry freely with backoff
+- For non-idempotent operations: use an idempotency key — a unique identifier per request that the server uses to detect and deduplicate retries
+- If you can't add idempotency keys, don't retry non-idempotent operations — surface the error and let the user decide
+- Log when a retry is skipped due to non-idempotency, so the user can take manual action
+
+---
+
+## Cascading Failures and Bulkheads
+
+When one component fails, it shouldn't take the entire system down with it.
+
+**Why:** Without isolation, a slow external API can exhaust your connection pool, which blocks database queries, which causes all requests to timeout. One failure cascades through the system.
+
+### Bulkhead Pattern
+
+Isolate resources for different concerns so that failure in one doesn't starve others.
+
+**In practice:**
+- Use separate connection pools for different external services — a hung LLM API shouldn't exhaust the pool used for database queries
+- Set per-service timeout budgets — if the LLM takes 120s, the total request timeout shouldn't be 120s + DB + processing; allocate a budget per stage
+- Limit concurrency per external service — even if you have 100 incoming requests, don't open 100 simultaneous connections to the same external API
+- Use queue-based processing for operations that can tolerate delay — queues act as natural buffers against load spikes
+
+### Failure Propagation Rules
+- A failing dependency should result in a degraded response, not a 500 error, when possible
+- Set timeouts aggressively on all external calls — it's better to fail fast and show "LLM unavailable" than to hold a request open for 5 minutes
+- Never let a background job failure affect request handling — background jobs should have their own error boundaries
+
 ---
 
 ## Graceful Degradation
@@ -192,6 +243,28 @@ Long-running operations should be cancellable by the user.
 - Log cancellation with what was completed and what was skipped
 
 > **CyberPulse example:** The fetch operation uses an `asyncio.Event` for cancellation. The signal is checked between pipeline stages (ingestion, classification, condensation). A cancel endpoint sets the event, and the pipeline exits gracefully at the next checkpoint.
+
+---
+
+## Error Telemetry and Observability
+
+Errors are data. Beyond logging individual errors, track error patterns to detect problems early.
+
+**What to track:**
+- **Error rate by category** — a spike in validation errors may indicate a bad client release; a spike in infrastructure errors may indicate a database problem
+- **Error rate by endpoint** — one endpoint generating most errors needs attention
+- **External service failure rate** — track success/failure ratio per service over time to identify degradation before it becomes an outage
+- **Error duration** — how long errors persist before resolution (manual or automatic)
+
+**Structured error data:**
+- Include a request ID or correlation ID in every error log — this links errors to the specific request and makes tracing across services possible
+- Include the operation context: what was being attempted, what stage of the pipeline, what input triggered the error
+- For errors returned to clients, include an error code (not just a message) that support and documentation can reference
+
+**Alerting thresholds:**
+- Don't alert on individual errors (too noisy). Alert on rates: "error rate > 5% for 5 minutes" is actionable; "one 500 error" is not
+- Differentiate between transient spikes (self-recovering) and sustained elevation (needs intervention)
+- For critical services, alert on the absence of expected activity — if the hourly fetch hasn't run, that's a silent failure
 
 ---
 

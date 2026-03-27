@@ -137,6 +137,93 @@ Knowing what to skip is as important as knowing what to test.
 
 ---
 
+## Test Isolation Techniques
+
+### Database Isolation
+
+Tests that touch the database need isolation so they don't interfere with each other.
+
+**Approaches:**
+- **Transaction rollback** — Wrap each test in a transaction, roll back after the test. Fast; no cleanup code needed. Best for most cases.
+- **Fresh database per test** — Create and destroy a temporary database for each test (or test class). Slower but guarantees complete isolation. Best for tests that modify schema or test migrations.
+- **Shared database with cleanup** — Use a single test database, but truncate/reseed tables between tests. Middle ground; watch for forgotten cleanup.
+
+**In practice:**
+- Default to transaction rollback — it's the cheapest isolation
+- Use fresh databases for integration tests that test migrations or schema changes
+- Never share database state between tests — even if the order happens to work today, it won't tomorrow
+
+### Mocking Strategy
+
+Mocking replaces real dependencies with controlled substitutes. Use it deliberately, not by default.
+
+**When to mock:**
+- **External services** — LLM APIs, third-party APIs, email providers (slow, costly, flaky)
+- **Time-dependent code** — freeze `now()` to make tests deterministic
+- **Non-deterministic code** — random number generators, UUIDs
+
+**When NOT to mock:**
+- **Your own code** — if you mock your data layer to test your business logic, you're testing nothing useful. Use a real (test) database instead.
+- **Simple dependencies** — if the real thing is fast and deterministic, use it
+- **The thing under test** — never mock the function you're testing (this sounds obvious but it happens)
+
+**Mock vs. Stub vs. Spy:**
+- **Mock** — replaces the dependency entirely; you control what it returns and assert it was called correctly
+- **Stub** — provides canned responses but doesn't assert call patterns; simpler than mocks
+- **Spy** — wraps the real implementation and records calls; the real code still runs
+
+**Default to stubs** for simplicity. Use mocks when you need to verify interaction patterns. Use spies when you want the real behavior but need to inspect calls.
+
+---
+
+## Debugging Flaky Tests
+
+Flaky tests — tests that pass sometimes and fail sometimes — erode trust in the test suite faster than missing tests.
+
+### Common Causes
+
+- **Shared state** — tests depend on state from a previous test; reorder breaks them
+- **Time sensitivity** — tests that use `now()` or expect operations to complete within a specific time
+- **Async race conditions** — asserting before an async operation completes
+- **External dependencies** — tests that hit real networks, real APIs, or real file systems
+- **Non-deterministic data** — using random values or auto-incrementing IDs in assertions
+
+### Debugging Approach
+
+1. **Reproduce locally** — run the failing test 50 times in a loop. If it doesn't fail, the flake is environment-specific.
+2. **Run in isolation** — does the test pass alone but fail in suite? Shared state issue.
+3. **Run in reverse order** — if the test depends on execution order, this surfaces it immediately.
+4. **Add logging** — log the actual values that are compared in assertions. Flaky failures with no context are impossible to debug.
+5. **Check for time dependence** — does the test fail more around midnight, or near time boundaries? Freeze time in tests.
+
+### Prevention
+
+- Use factories with deterministic values, not auto-generated IDs
+- For async operations, use explicit waits/assertions (not `sleep`)
+- Isolate every test from every other test — no shared state, no execution order dependency
+- Quarantine known flaky tests — don't let them block the pipeline while you investigate, but don't ignore them
+
+---
+
+## Selecting E2E Test Paths
+
+With only 5-20 E2E tests, choosing the right paths is critical.
+
+**Selection criteria:**
+- **Revenue/value paths** — the workflows that make the application valuable. If these break, the app is useless.
+- **Multi-system paths** — workflows that cross multiple layers (UI → API → DB → external service). These catch integration bugs.
+- **High-traffic paths** — the most-used workflows. A bug here affects the most users.
+- **Previous failure points** — workflows that have had production bugs. They've proven they're fragile.
+
+**What to deprioritize in E2E:**
+- Error handling (use integration tests)
+- Edge cases (use unit tests)
+- Settings/configuration pages (low risk, easy to test manually)
+
+> **CyberPulse example:** Key E2E paths would be: (1) fetch articles from sources → verify they appear in the list, (2) generate output from articles → verify the output renders, (3) export generated output → verify the file downloads, (4) change settings → verify they take effect on next operation.
+
+---
+
 ## When to Write Tests
 
 ### Before Shipping

@@ -174,15 +174,17 @@ Make the system resilient, secure, and operationally sound.
 
 ### 10. Testing & QA
 
-Verify that the system works correctly and continues to work as it evolves.
+Formalize testing into a suite that runs automatically and catches regressions.
+
+**Important clarification:** This phase is about building the *automated test suite* and running a formal QA pass — it is not the first time the software gets tested. Manual testing and basic unit tests should happen continuously during Core Features (Phase 7) and Hardening (Phase 9). By the time you reach this phase, the software already works; the goal here is to *prove* it works and ensure it keeps working as it evolves.
 
 **Outputs:**
 - **Test suite** — Unit, integration, and/or e2e tests for critical paths (→ see [09-testing](09-testing.md))
-- **Manual QA** — Walkthrough of all features, including edge cases
+- **Manual QA** — Systematic walkthrough of all features, including edge cases
 - **Performance check** — Verify response times, memory usage, database query performance
 - **Cross-environment testing** — Different browsers, screen sizes, OS versions as applicable
 
-**Why this phase matters:** Untested software is software that works by coincidence. Tests create confidence to refactor, extend, and deploy. Manual QA catches what automated tests miss.
+**Why this phase matters:** Informal testing during development catches the obvious bugs. A formal test suite catches the subtle ones — regressions, edge cases, interaction bugs — and gives you confidence to refactor, extend, and deploy without fear.
 
 **When to skip:** Tests for throwaway scripts are optional. But if the code will live longer than a week or be touched by someone else, testing pays for itself.
 
@@ -219,6 +221,29 @@ Keep the software working, secure, and relevant over time.
 **Why this phase matters:** Software without maintenance decays. Dependencies get vulnerabilities. Users find bugs. Requirements change. Maintenance is not "extra work after the project is done" — it's an ongoing phase of the project's life.
 
 **When to skip:** Only for intentionally throwaway projects.
+
+---
+
+## Phase Iteration and Backtracking
+
+Phases are presented in order, but real projects aren't linear. Sometimes Foundation reveals that an architecture decision was wrong. Sometimes Core Features expose a missing requirement. This is normal — the question is how to backtrack without losing progress.
+
+**When to loop back:**
+- **Foundation reveals a bad technology choice** — e.g., the database engine can't handle a required query pattern. Loop back to Architecture. The fix is targeted: revise the specific decision, not the entire architecture.
+- **Core Features expose a missing requirement** — e.g., users need bulk operations that weren't in the spec. Add the requirement, assess its impact on architecture and data model, then continue building.
+- **Hardening reveals a design flaw** — e.g., the error handling pattern doesn't work for async pipelines. Revisit the architectural decision, patch it, and continue hardening.
+
+**How to backtrack well:**
+- Fix the specific decision that was wrong — don't restart the entire phase
+- Document what changed and why, so the same mistake isn't repeated
+- If the backtrack is large (rethinking the data model mid-build), pause and re-plan before coding
+- Treat backtracking as information, not failure — early phases are hypotheses; later phases are validation
+
+**When to stop and re-evaluate the project:**
+- If you've backtracked to the same phase three times, the problem may be in your understanding of the requirements, not in the implementation
+- If a backtrack requires changing more than half of the existing code, consider whether the project concept needs revision
+
+> **CyberPulse example:** During Core Features, it became clear that the original single-pass article processing couldn't handle the condenser step (which needed classified output). This triggered a backtrack to Architecture to redesign the pipeline into explicit stages (fetch → classify → condense → generate). The fix was targeted and improved the design without restarting.
 
 ---
 

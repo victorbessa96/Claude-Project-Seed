@@ -137,6 +137,85 @@ Non-blocking notifications that appear briefly and auto-dismiss.
 - Required fields marked consistently (asterisk, "required" label)
 - Sensible defaults for optional fields — minimize what the user must fill in
 
+### Advanced Validation Patterns
+
+**Async validation** — Some fields need server-side checks (is this username taken? is this URL reachable?). Validate after the user finishes typing (debounce 300-500ms), show a loading indicator on the field, and display the result inline. Don't block form submission on slow async checks — validate optimistically and handle server-side rejection on submit.
+
+**Dependent fields** — When one field's value determines what other fields are available (e.g., selecting "RSS" as source type reveals a URL field). Show/hide dependent fields dynamically. Clear dependent values when the parent changes. Ensure hidden fields don't submit values.
+
+**Multi-field validation** — Some rules span multiple fields (password confirmation, date ranges where start must precede end). Validate these on submit or when the last related field loses focus — not on every keystroke. Show the error next to the most relevant field, not in a banner.
+
+---
+
+## Modal & Dialog Patterns
+
+### When to Use Modals
+- **Confirmation of destructive actions** — "Delete 15 articles? This cannot be undone."
+- **Focused input** — A form that needs the user's full attention (settings that affect the whole system)
+- **Preview/detail** — Showing expanded content without navigating away from a list view
+
+### When NOT to Use Modals
+- Simple acknowledgements ("Saved!") — use a toast instead
+- Content that needs scrolling or complex interaction — use a full page
+- Frequent actions — modal fatigue makes users dismiss without reading
+
+### Modal Behavior
+- **Focus trap** — Tab cycles through modal elements only; focus never escapes to the background
+- **Escape to close** — Always. No exceptions.
+- **Backdrop click** — Closes the modal for informational dialogs. For forms with unsaved data, either ignore backdrop clicks or warn before closing.
+- **Return focus** — When the modal closes, focus returns to the element that opened it
+- **No nested modals** — If you need a modal inside a modal, your UX needs a redesign
+
+### Sizing
+- Content determines size, up to a reasonable maximum (e.g., 600px width for forms, 800px for previews)
+- On mobile, modals expand to near-full-screen
+- Scrollable content inside the modal, not scrolling the modal itself
+
+---
+
+## Search Patterns
+
+### Search Input
+- Prominent placement — top of content area or in the header
+- Debounce input (300ms) before triggering search
+- Show a loading indicator during search
+- Clear button (×) when search has content
+- Preserve search term across navigation (if the search applies globally)
+
+### Results Display
+- Highlight matching terms in results
+- Show the most relevant information first (title, then context snippet)
+- For filtered lists (searching within a table), update the list in place
+- For global search, show results in a dropdown or dedicated results view
+
+### Empty and Error States
+- **No results:** "No articles matching 'ransomware attack'. Try different keywords." — be specific about what was searched
+- **Too many results:** Suggest narrowing with filters rather than paginating through hundreds
+- **Search error:** Degrade gracefully — show the last good results or the unfiltered view, with a toast explaining the error
+
+> **CyberPulse example:** Article table filter supports text search across titles with 300ms debounce, combined with source and category filters. Active search terms are preserved in localStorage with other filter state.
+
+---
+
+## Bulk Actions
+
+### Multi-Select
+- Checkbox on each row for individual selection
+- "Select all" checkbox in the table header — selects visible items, not all pages
+- Selection count visible: "12 articles selected"
+- Selection persists across pagination only if explicitly designed (and clearly communicated to the user)
+
+### Action Bar
+- Appears when items are selected (floating bar or inline above the table)
+- Shows available actions: Delete, Export, Change Category, etc.
+- Destructive bulk actions always require confirmation with the count: "Delete 12 articles?"
+- Non-destructive actions (export, tag) can proceed without confirmation
+
+### Feedback
+- Progress indication for bulk operations that take time
+- Summary toast on completion: "12 articles deleted" or "10 exported, 2 failed"
+- If some items fail, report the failures specifically (which items, why)
+
 ---
 
 ## Responsive Design

@@ -167,6 +167,33 @@ The orchestrator (which may itself be an LLM or simple code) manages:
 - Error handling when a sub-agent fails
 - Completion criteria (when is the overall task done?)
 
+#### Orchestration Pseudocode
+
+**Sequential orchestration** (most common):
+```
+results = {}
+for step in [research, analysis, writing, review]:
+    agent = create_agent(step.type, step.config)
+    input = build_input(step, results)  # previous results inform next step
+    result = await agent.run(input, max_iterations=step.limit)
+    if result.failed:
+        handle_failure(step, result)  # retry, skip, or abort
+        break
+    results[step.name] = result.output
+return aggregate(results)
+```
+
+**Parallel orchestration** (for independent sub-tasks):
+```
+tasks = decompose(goal)  # break goal into independent sub-tasks
+agents = [create_agent(task) for task in tasks]
+results = await gather_with_errors(
+    [agent.run(task) for agent, task in zip(agents, tasks)]
+)
+# Some may have failed — aggregate what succeeded
+return synthesize(results)
+```
+
 **Why orchestration:** A single agent trying to do everything tends to lose focus. Specialized agents with clear mandates produce higher-quality output. But orchestration adds complexity — only use it when the task genuinely benefits from specialization.
 
 ---
@@ -265,6 +292,79 @@ When an agent encounters something it can't handle:
 2. Notify a human with a clear description of the problem
 3. Pause or gracefully degrade rather than guessing
 4. Provide enough context for the human to take over
+
+---
+
+### Debugging and Observability
+
+Agents fail in ways that are harder to diagnose than traditional software. An agent that produces wrong output may not throw an error — it just makes a bad decision.
+
+#### Logging for Debuggability
+
+- **Log each loop iteration** — observation, decision, action, result. This is the agent's "execution trace."
+- **Log the LLM's reasoning** — if the model explains its choice (chain-of-thought), log it. When the agent goes wrong, the reasoning shows where.
+- **Log tool inputs and outputs** — "Called search('ransomware') → 15 results" is far more debuggable than "Called search → success."
+- **Log timing per step** — if the agent is slow, you need to know whether the bottleneck is LLM calls, tool execution, or processing.
+
+#### Common Failure Patterns
+
+- **Infinite loops** — the agent repeats the same action because it doesn't recognize the result hasn't changed. Fix: compare current observation to previous; if identical for N iterations, force stop.
+- **Tool misuse** — the agent calls a tool with wrong parameters. Fix: validate tool inputs before execution; return clear error messages that help the LLM self-correct.
+- **Goal drift** — the agent starts on-task but gradually shifts focus. Fix: include the original goal in every LLM prompt, not just the first one.
+- **Stuck in reflection** — the agent keeps evaluating without acting. Fix: set a maximum consecutive "think" steps before requiring an action.
+
+---
+
+### Agent Communication Patterns
+
+When multiple agents work together, they need a protocol for sharing context.
+
+#### Message-Based Communication
+
+Agents communicate through structured messages, not shared state.
+
+```
+Message:
+  from: "research_agent"
+  to: "analysis_agent"
+  type: "handoff"
+  payload: { articles: [...], search_context: "...", open_questions: [...] }
+```
+
+**Why:** Shared mutable state between agents creates race conditions and makes debugging nearly impossible. Messages create an auditable trail of what each agent knew and when.
+
+**In practice:**
+- Define a message schema that all agents understand (sender, receiver, type, payload)
+- Include context that the receiving agent needs — don't assume it can read the sending agent's state
+- Log all inter-agent messages for debugging
+- Keep payloads concise — send summaries and references, not raw data
+
+#### Context Handoff
+
+When one agent passes work to another, the handoff should include:
+- **What was accomplished** — summary of completed work
+- **What remains** — clear description of the next task
+- **Relevant context** — data, decisions made, constraints discovered
+- **Open questions** — things the sending agent wasn't sure about
+
+---
+
+### Cost Modeling for Agents
+
+Agents consume more tokens than simple LLM calls because they loop. A 10-iteration agent loop costs 10x a single call (approximately — context grows each iteration).
+
+**Estimating agent costs:**
+- **Per-iteration cost** = input tokens (system prompt + history + observation) + output tokens (decision + action)
+- **History growth** — each iteration adds to history. By iteration 10, the input is much larger than iteration 1.
+- **Tool costs** — some tools trigger additional LLM calls (sub-agents, classification). Include these.
+- **Total cost** = sum of all iterations + tool costs
+
+**Controlling costs:**
+- Set a maximum iteration count (the primary cost control lever)
+- Set a token budget per agent run — stop if exceeded
+- Use cheaper models for intermediate reasoning steps; reserve expensive models for final output
+- Trim conversation history aggressively — summarize old iterations rather than keeping full transcripts
+- Monitor actual costs per agent type and adjust limits based on observed patterns
 
 ---
 
